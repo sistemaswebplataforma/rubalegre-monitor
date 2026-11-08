@@ -1,0 +1,54 @@
+{
+  "platforms": [
+    {
+      "id": "rafael_torre_2026",
+      "name": "Rafael Torre 2026",
+      "base_url": "https://plataforma.rafaeltorre.com",
+      "frequency_minutes": 5,
+      "timeout_seconds": 15,
+      "slow_threshold_seconds": 3.0,
+      "retries": 1,
+      "retry_delay_seconds": 20,
+      "profiles": [
+        {
+          "id": "docente",
+          "label": "Docente de prueba",
+          "username_env": "MONITOR_USERNAME",
+          "password_env": "MONITOR_PASSWORD",
+          "login_url": "/wp-login.php",
+          "checks": {
+            "public": {
+              "url": "/",
+              "must_contain_all": [
+                "Acceder",
+                "Nuestra plataforma del 2026",
+                "Iniciar sesión",
+                "Usuario o correo electrónico",
+                "Contraseña"
+              ]
+            },
+            "authenticated": {
+              "must_contain_any": ["Calificaciones", "Asistencia"]
+            },
+            "mis_clases": {
+              "url": "/",
+              "must_contain_all": ["Bienvenido/a,", "Avisos Institucionales"]
+            },
+            "test_class": {
+              "url": "/groups/testeos-mis-clases-de-testeos-2026/mc-actividad/",
+              "must_contain_all": [
+                "Mis clases de Testeos",
+                "Grupo permanente de infraestructura QA y desarrollo."
+              ]
+            },
+            "content": {
+              "url": "/groups/testeos-mis-clases-de-testeos-2026/mc-tareas/",
+              "must_contain_all": ["Testeo. No responder"],
+              "check_session_marker": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
