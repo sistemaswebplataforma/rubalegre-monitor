@@ -1,0 +1,24 @@
+name: Monitor
+
+# Fase de prueba: solo manual. Cuando funcione desde GitHub, se agrega el cron cada 5 minutos.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Ejecutar monitor
+        env:
+          MONITOR_USERNAME: ${{ secrets.MONITOR_USERNAME }}
+          MONITOR_PASSWORD: ${{ secrets.MONITOR_PASSWORD }}
+        run: python run_monitor.py --diagnose --no-retry
