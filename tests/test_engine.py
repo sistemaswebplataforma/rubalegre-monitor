@@ -24,9 +24,11 @@ os.environ["no_proxy"] = "127.0.0.1,localhost"
 from monitor import engine, report  # noqa: E402
 
 LOGIN_PAGE = (
-    "<html><head><title>Acceder &lt; Nuestra plataforma del 2026</title></head><body>"
-    "<h1>Nuestra plataforma del 2026</h1><form><h2>Iniciar sesión</h2>"
-    "<label>Usuario o correo electrónico</label><label>Contraseña</label></form>%s"
+    "<html><head><title>Acceder &lt; Tu plataforma del 2026. &#8212; WordPress</title>"
+    "<style>.login_error{}</style></head><body>"
+    '<form id="loginform" name="loginform"><h2>Iniciar sesión</h2>'
+    '<input name="log" id="user_login" aria-describedby="login_error">'
+    '<input name="pwd" id="user_pass" aria-describedby="login_error"></form>%s'
     "</body></html>"
 )
 HOME_PAGE = (
@@ -78,6 +80,8 @@ class Handler(BaseHTTPRequestHandler):
         form = parse_qs(self.rfile.read(length).decode("utf-8"))
         if STATE["mode"] == "maintenance":
             return self._send(200, MAINTENANCE_PAGE)
+        if STATE["mode"] == "fake_login":
+            return self._send(200, HOME_PAGE)  # 200 sin cookie de sesión
         if form.get("pwd", [""])[0] == "good":
             return self._redirect("/", {"Set-Cookie": f"{COOKIE}=ok; Path=/"})
         return self._send(200, LOGIN_PAGE % '<div id="login_error">Error</div>')
@@ -136,13 +140,7 @@ def make_platform(base_url, **overrides):
                 "checks": {
                     "public": {
                         "url": "/",
-                        "must_contain_all": [
-                            "Acceder",
-                            "Nuestra plataforma del 2026",
-                            "Iniciar sesión",
-                            "Usuario o correo electrónico",
-                            "Contraseña",
-                        ],
+                        "must_contain_all": ['id="loginform"', 'name="log"', 'name="pwd"'],
                     },
                     "authenticated": {"must_contain_any": ["Calificaciones", "Asistencia"]},
                     "mis_clases": {
@@ -212,6 +210,30 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(result["error"]["type"], "login_rejected")
         for key in ("session", "mis_clases", "test_class", "content"):
             self.assertEqual(result["checks"][key], engine.UNKNOWN)
+
+    def test_login_sin_cookie_de_sesion_no_es_verde(self):
+        STATE["mode"] = "fake_login"
+        result = self.run_check()
+        self.assertEqual(result["checks"]["login"], engine.RED)
+        self.assertEqual(result["error"]["type"], "login_failed")
+        self.assertEqual(result["checks"]["mis_clases"], engine.UNKNOWN)
+
+    def test_cambio_de_nombre_del_sitio_no_rompe_el_monitor(self):
+        # La pantalla de login ya no dice "Nuestra plataforma": debe seguir verde.
+        result = self.run_check()
+        self.assertEqual(result["overall"], engine.GREEN)
+
+    def test_diagnose_muestra_la_pantalla_sin_secretos(self):
+        STATE["mode"] = "class_missing"
+        platform = make_platform(self.base)
+        result = engine.run_check(
+            platform, platform["profiles"][0], env=GOOD_ENV,
+            sleep=lambda s: None, diagnose=True,
+        )
+        snap = result["diagnostics"]["test_class"]
+        self.assertIn("vacío", snap["text"])
+        self.assertNotIn("good", str(result["diagnostics"]))
+        self.assertNotIn(COOKIE, str(result["diagnostics"]))
 
     def test_pantalla_de_proximamente_da_rojo(self):
         STATE["mode"] = "maintenance"

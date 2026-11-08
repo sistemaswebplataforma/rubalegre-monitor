@@ -32,6 +32,8 @@ def main():
     parser.add_argument("--json", action="store_true", help="mostrar el resultado en JSON")
     parser.add_argument("--output", help="guardar el resultado en este archivo JSON")
     parser.add_argument("--no-retry", action="store_true", help="no repetir la prueba si da ROJO")
+    parser.add_argument("--diagnose", action="store_true",
+                        help="si algo falla, mostrar qué pantalla llegó (URL, título y texto visible)")
     args = parser.parse_args()
 
     # Evita errores con los emojis en consolas de Windows.
@@ -44,7 +46,7 @@ def main():
         if args.no_retry:
             for platform in config.get("platforms", []):
                 platform["retries"] = 0
-        results = engine.run_all(config, args.platform, args.profile)
+        results = engine.run_all(config, args.platform, args.profile, diagnose=args.diagnose)
     except (OSError, ValueError) as exc:
         print(f"ERROR de configuración: {exc}", file=sys.stderr)
         return 3

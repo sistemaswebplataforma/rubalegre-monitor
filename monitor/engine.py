@@ -6,17 +6,22 @@ Simula el recorrido de una persona real en una plataforma WordPress/BuddyBoss:
 
 Reglas que nunca se rompen:
   * HTTP 200 por sí solo jamás significa OK: cada pantalla debe contener sus
-    marcadores positivos (texto que solo existe cuando la plataforma funciona).
-  * Si tras enviar las credenciales seguimos viendo el formulario de login, es ROJO.
+    marcadores positivos (algo que solo existe cuando la plataforma funciona).
+  * El login solo es OK si WordPress entregó la cookie de sesión. No alcanza con
+    "no vemos el formulario".
   * Si la configuración o las credenciales están incompletas, el estado es
     UNKNOWN, nunca GREEN.
+  * Los marcadores no deben depender de textos que cambian (año, nombre del
+    sitio). Se prefieren los estructurales de WordPress (id="loginform", etc.).
 
 Las credenciales se leen de variables de entorno. Nunca se guardan ni se imprimen.
 """
 
 from __future__ import annotations
 
+import html as html_lib
 import os
+import re
 import time
 from datetime import datetime, timezone
 
@@ -79,6 +84,8 @@ MISSING_TYPE = {
 
 # Errores por los que reintentar no tiene sentido (y podría bloquear la cuenta).
 NO_RETRY_TYPES = {"config_missing", "login_rejected"}
+
+DEFAULT_LOGIN_COOKIE_PREFIX = "wordpress_logged_in"
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +178,11 @@ def _is_login_screen(body, public_check):
     return bool(markers) and all(m in body for m in markers)
 
 
+def _has_login_error(body):
+    """True si WordPress mostró el aviso de error de login (el elemento, no el atributo)."""
+    return 'id="login_error"' in body or "id='login_error'" in body
+
+
 def _timed_status(elapsed, slow):
     if elapsed > slow:
         return YELLOW, f"Respuesta lenta ({elapsed:.1f} s, umbral {slow:g} s)"
@@ -187,21 +199,42 @@ def _overall(statuses):
     return GREEN
 
 
+def _snapshot(resp, limit=500):
+    """Resumen de lo que llegó a pantalla: URL final, título y texto visible.
+
+    Solo texto visible. No incluye cookies, encabezados ni credenciales.
+    """
+    html = resp.text
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+    title = re.sub(r"\s+", " ", html_lib.unescape(match.group(1))).strip() if match else ""
+    text = re.sub(r"(?is)<(script|style|noscript)\b.*?</\1>", " ", html)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", html_lib.unescape(text)).strip()
+    return {
+        "url": resp.url,
+        "http_status": resp.status_code,
+        "title": title,
+        "text": text[:limit],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Una ejecución completa del recorrido
 # ---------------------------------------------------------------------------
 
 class _Run:
-    def __init__(self, platform, profile, env):
+    def __init__(self, platform, profile, env, diagnose=False):
         self.platform = platform
         self.profile = profile
         self.env = env
+        self.diagnose = diagnose
         self.base = platform["base_url"].rstrip("/")
         self.timeout = platform.get("timeout_seconds", 15)
         self.slow = platform.get("slow_threshold_seconds", 3.0)
         self.words = platform.get("maintenance_words", DEFAULT_MAINTENANCE_WORDS)
         self.checks = profile["checks"]
         self.steps = {key: _new_step() for key in STEP_ORDER}
+        self.snapshots = {}
         self.session_ok_count = 0
         self.error = None
         self.unreachable = False
@@ -227,6 +260,10 @@ class _Run:
             step = self.steps[key]
             if step["status"] == UNKNOWN and not step["detail"]:
                 step["detail"] = reason
+
+    def _remember(self, key, resp):
+        if self.diagnose and resp is not None:
+            self.snapshots[key] = _snapshot(resp)
 
     # -- recorrido -----------------------------------------------------------
 
@@ -287,6 +324,7 @@ class _Run:
             self._set("maintenance", UNKNOWN, "No evaluable: sin respuesta")
             return
 
+        self._remember("public_access", resp)
         body = resp.text
         missing = _missing(body, check)
         if resp.status_code != 200 or missing:
@@ -322,26 +360,39 @@ class _Run:
         if err:
             self._fail("login", "login_failed", err[1], elapsed)
             return False
+
+        self._remember("login", resp)
         if resp.status_code != 200:
             self._fail("login", "login_failed", f"HTTP {resp.status_code}", elapsed)
             return False
 
         body = resp.text
+        if _has_login_error(body):
+            self._fail(
+                "login",
+                "login_rejected",
+                "WordPress rechazó las credenciales del usuario de prueba",
+                elapsed,
+            )
+            return False
         if _is_login_screen(body, self.checks["public"]):
-            if "login_error" in body:
-                self._fail(
-                    "login",
-                    "login_rejected",
-                    "WordPress rechazó las credenciales del usuario de prueba",
-                    elapsed,
-                )
-            else:
-                self._fail(
-                    "login",
-                    "login_failed",
-                    "Tras enviar las credenciales seguimos en la pantalla de login",
-                    elapsed,
-                )
+            self._fail(
+                "login",
+                "login_failed",
+                "Tras enviar las credenciales seguimos en la pantalla de login",
+                elapsed,
+            )
+            return False
+
+        # Evidencia positiva: WordPress entrega esta cookie solo si el login fue efectivo.
+        prefix = self.profile.get("login_cookie_prefix", DEFAULT_LOGIN_COOKIE_PREFIX)
+        if prefix and not any(c.name.startswith(prefix) for c in self.session.cookies):
+            self._fail(
+                "login",
+                "login_failed",
+                "WordPress no entregó la cookie de sesión: el login no fue efectivo",
+                elapsed,
+            )
             return False
 
         status, detail = _timed_status(elapsed, self.slow)
@@ -357,6 +408,7 @@ class _Run:
             self._fail(key, UNAVAILABLE_TYPE[key], err[1], elapsed)
             return False
 
+        self._remember(key, resp)
         body = resp.text
         code = resp.status_code
 
@@ -415,7 +467,7 @@ class _Run:
             for key, short in RESPONSE_KEYS.items()
             if self.steps[key]["response_time"] is not None
         }
-        return {
+        result = {
             "platform": self.platform["id"],
             "platform_name": self.platform["name"],
             "profile": self.profile["id"],
@@ -429,25 +481,35 @@ class _Run:
             "attempts": 1,
             "error": self.error,
         }
+        if self.diagnose:
+            result["diagnostics"] = {
+                key: self.snapshots[key]
+                for key in STEP_ORDER
+                if key in self.snapshots and checks[key] != GREEN
+            }
+        return result
 
 
 # ---------------------------------------------------------------------------
 # API pública
 # ---------------------------------------------------------------------------
 
-def run_check(platform, profile, env=None, sleep=time.sleep):
+def run_check(platform, profile, env=None, sleep=time.sleep, diagnose=False):
     """Ejecuta el recorrido de un perfil, con reintentos si el resultado es ROJO.
 
     Un ROJO aislado (un corte de red de segundos) no debería disparar una alerta,
     por eso se repite la prueba completa antes de darlo por bueno. No se reintenta
     cuando las credenciales fueron rechazadas, para no provocar bloqueos de cuenta.
+
+    Con diagnose=True el resultado incluye, para cada paso que no dio verde, qué
+    pantalla llegó (URL final, título y texto visible).
     """
     env = os.environ if env is None else env
     retries = int(platform.get("retries", 1))
     delay = float(platform.get("retry_delay_seconds", 20))
     attempt = 1
     while True:
-        result = _Run(platform, profile, env).execute()
+        result = _Run(platform, profile, env, diagnose=diagnose).execute()
         result["attempts"] = attempt
         error_type = (result["error"] or {}).get("type")
         if result["overall"] != RED or error_type in NO_RETRY_TYPES or attempt > retries:
@@ -456,7 +518,8 @@ def run_check(platform, profile, env=None, sleep=time.sleep):
         attempt += 1
 
 
-def run_all(config, platform_id=None, profile_id=None, env=None, sleep=time.sleep):
+def run_all(config, platform_id=None, profile_id=None, env=None, sleep=time.sleep,
+            diagnose=False):
     """Ejecuta todas las plataformas y perfiles (o los filtrados)."""
     validate_config(config)
     results = []
@@ -466,5 +529,7 @@ def run_all(config, platform_id=None, profile_id=None, env=None, sleep=time.slee
         for profile in platform["profiles"]:
             if profile_id and profile["id"] != profile_id:
                 continue
-            results.append(run_check(platform, profile, env=env, sleep=sleep))
+            results.append(
+                run_check(platform, profile, env=env, sleep=sleep, diagnose=diagnose)
+            )
     return results

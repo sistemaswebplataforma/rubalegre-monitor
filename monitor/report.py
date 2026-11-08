@@ -34,6 +34,18 @@ def render(result):
     if error:
         lines += ["", f"Error principal: {error['type']}", f"  {error['message']}"]
 
+    diagnostics = result.get("diagnostics")
+    if diagnostics:
+        lines += ["", "DIAGNÓSTICO (lo que llegó a pantalla en cada paso que no dio verde)"]
+        for key, snap in diagnostics.items():
+            lines += [
+                f"[{STEP_LABELS[key]}]",
+                f"  URL final: {snap['url']}",
+                f"  HTTP: {snap['http_status']}",
+                f"  Título: {snap['title']}",
+                f"  Texto: {snap['text']}",
+            ]
+
     checked = datetime.fromisoformat(result["checked_at"]).astimezone().strftime("%H:%M:%S")
     lines += ["", f"Tiempo total: {result['total_time']:.2f} s"]
     if result.get("attempts", 1) > 1:

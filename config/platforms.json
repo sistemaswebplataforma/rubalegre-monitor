@@ -20,19 +20,23 @@
             "public": {
               "url": "/",
               "must_contain_all": [
-                "Acceder",
-                "Nuestra plataforma del 2026",
-                "Iniciar sesión",
-                "Usuario o correo electrónico",
-                "Contraseña"
+                "id=\"loginform\"",
+                "name=\"log\"",
+                "name=\"pwd\""
               ]
             },
             "authenticated": {
-              "must_contain_any": ["Calificaciones", "Asistencia"]
+              "must_contain_any": [
+                "Calificaciones",
+                "Asistencia"
+              ]
             },
             "mis_clases": {
               "url": "/",
-              "must_contain_all": ["Bienvenido/a,", "Avisos Institucionales"]
+              "must_contain_all": [
+                "Bienvenido/a,",
+                "Avisos Institucionales"
+              ]
             },
             "test_class": {
               "url": "/groups/testeos-mis-clases-de-testeos-2026/mc-actividad/",
@@ -43,7 +47,9 @@
             },
             "content": {
               "url": "/groups/testeos-mis-clases-de-testeos-2026/mc-tareas/",
-              "must_contain_all": ["Testeo. No responder"],
+              "must_contain_all": [
+                "Testeo. No responder"
+              ],
               "check_session_marker": false
             }
           }

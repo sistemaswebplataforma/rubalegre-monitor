@@ -42,6 +42,7 @@ Opciones útiles:
 python run_monitor.py --json                 # resultado estructurado en JSON
 python run_monitor.py --output result.json   # además lo guarda en un archivo
 python run_monitor.py --no-retry             # sin repetir la prueba si da rojo
+python run_monitor.py --diagnose             # si algo falla, muestra qué pantalla llegó (URL, título, texto)
 python run_monitor.py --platform rafael_torre_2026 --profile docente
 ```
 
@@ -57,6 +58,8 @@ Todo lo que cambia entre plataformas está en `config/platforms.json`, no en el 
 - `checks`: URL y textos que deben aparecer en cada pantalla (`must_contain_all`, `must_contain_any`)
 
 Para sumar otra plataforma o perfil se agrega un bloque al JSON. No hay que tocar el código.
+
+Para el login se usan marcadores estructurales de WordPress (`id="loginform"`, `name="log"`, `name="pwd"`) y no textos que cambian, como el nombre o el año del sitio. Además el login solo es verde si WordPress entregó la cookie de sesión (`login_cookie_prefix`, por defecto `wordpress_logged_in`).
 
 Los marcadores salen de pantallas reales de la plataforma. Si el diseño de la plataforma cambia, hay que actualizar los textos en el JSON.
 
