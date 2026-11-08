@@ -16,6 +16,7 @@ Código de salida (el más alto entre todos los resultados):
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -34,6 +35,8 @@ def main():
     parser.add_argument("--no-retry", action="store_true", help="no repetir la prueba si da ROJO")
     parser.add_argument("--diagnose", action="store_true",
                         help="si algo falla, mostrar qué pantalla llegó (URL, título y texto visible)")
+    parser.add_argument("--publish", action="store_true",
+                        help="publicar estado e historial en Firebase y avisar si cambió")
     args = parser.parse_args()
 
     # Evita errores con los emojis en consolas de Windows.
@@ -58,6 +61,10 @@ def main():
     if args.output:
         with open(args.output, "w", encoding="utf-8") as handle:
             json.dump({"results": results}, handle, ensure_ascii=False, indent=2)
+
+    if args.publish:
+        from monitor import notify
+        notify.log_to_stderr(notify.publish(results, os.environ))
 
     if args.json:
         print(json.dumps({"results": results}, ensure_ascii=False, indent=2))

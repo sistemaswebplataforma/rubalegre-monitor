@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // La app solo LEE el estado y el historial. Nadie puede escribir desde afuera:
+    // el monitor escribe con una cuenta de servicio, que ignora estas reglas.
+    match /monitor_state/{doc} { allow read: if true; allow write: if false; }
+    match /monitor_events/{doc} { allow read: if true; allow write: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

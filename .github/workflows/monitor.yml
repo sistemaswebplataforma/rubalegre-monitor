@@ -27,4 +27,5 @@ jobs:
         env:
           MONITOR_USERNAME: ${{ secrets.MONITOR_USERNAME }}
           MONITOR_PASSWORD: ${{ secrets.MONITOR_PASSWORD }}
-        run: python run_monitor.py --diagnose
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: python run_monitor.py --diagnose --publish
