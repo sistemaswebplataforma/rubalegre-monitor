@@ -189,12 +189,13 @@ class Firebase:
         resp.raise_for_status()
 
     def push(self, title, text, data):
+        # Mensaje solo de datos: la app arma la notificación (aviso + indicador fijo),
+        # incluso con la app cerrada.
         body = {
             "message": {
                 "topic": TOPIC,
-                "notification": {"title": title, "body": text},
-                "data": {k: str(v) for k, v in data.items()},
-                "android": {"priority": "HIGH", "notification": {"channel_id": "alertas"}},
+                "data": {**{k: str(v) for k, v in data.items()}, "title": title, "text": text},
+                "android": {"priority": "HIGH"},
             }
         }
         resp = self.http.post(
