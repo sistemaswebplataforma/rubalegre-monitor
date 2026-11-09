@@ -108,6 +108,14 @@ def _alert(result):
     return title, detail
 
 
+def should_push(previous, new):
+    """El celular suena solo si hay algo importante. Pasar entre verde y amarillo
+    (lentitud) queda en el historial y en el indicador, pero no suena."""
+    if previous is None:
+        return new != "GREEN"
+    return not ({previous, new} <= {"GREEN", "YELLOW"})
+
+
 def build_state_doc(result, previous_doc, now):
     changed = previous_doc is None or previous_doc.get("overall") != result["overall"]
     return {
@@ -230,11 +238,15 @@ def publish(results, env, firebase=None, now=None):
             if change:
                 title, text = change
                 firebase.add_event(build_event_doc(result, previous, title, text, now))
-                firebase.push(title, text, {
-                    "platform": result["platform"],
-                    "overall": result["overall"],
-                })
-                log.append(f"Firebase: {key} {previous or 'nuevo'} -> {result['overall']} (aviso enviado)")
+                if should_push(previous, result["overall"]):
+                    firebase.push(title, text, {
+                        "platform": result["platform"],
+                        "overall": result["overall"],
+                    })
+                    sent = "aviso enviado"
+                else:
+                    sent = "solo historial, sin sonar"
+                log.append(f"Firebase: {key} {previous or 'nuevo'} -> {result['overall']} ({sent})")
             else:
                 log.append(f"Firebase: {key} {result['overall']} (sin cambios)")
         except Exception as exc:

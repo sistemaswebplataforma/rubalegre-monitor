@@ -72,6 +72,17 @@ class NotifyTests(unittest.TestCase):
         self.assertEqual(fb.events, [])
         self.assertEqual(fb.states["rt__docente"]["since"], "t0")
 
+    def test_verde_a_amarillo_queda_en_historial_pero_no_suena(self):
+        fb = FakeFirebase({"rt__docente": {"overall": "GREEN", "since": "t0"}})
+        self.run_pub(fb, result("YELLOW", details={"login": "Respuesta lenta (4.0 s)"}))
+        self.assertEqual(fb.pushes, [])
+        self.assertEqual(len(fb.events), 1)
+
+    def test_amarillo_a_rojo_si_suena(self):
+        fb = FakeFirebase({"rt__docente": {"overall": "YELLOW", "since": "t0"}})
+        self.run_pub(fb, result("RED", ERR))
+        self.assertEqual(len(fb.pushes), 1)
+
     def test_recuperacion_avisa(self):
         fb = FakeFirebase({"rt__docente": {"overall": "RED", "since": "t0"}})
         self.run_pub(fb, result("GREEN"))
