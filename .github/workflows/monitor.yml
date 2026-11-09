@@ -1,6 +1,8 @@
 name: Monitor
 
-# Cada 5 minutos (GitHub puede demorar unos minutos en horas de mucha carga) y a mano.
+# GitHub retrasa mucho los cron (en la práctica, entre 30 y 60 min), así que este trabajo
+# vigila en bucle: comprueba cada 2 minutos durante ~5 h 40 min y, antes de terminar,
+# se vuelve a lanzar solo. El cron queda como respaldo por si la cadena se corta.
 on:
   schedule:
     - cron: "*/5 * * * *"
@@ -12,20 +14,31 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - name: Ejecutar monitor
+      - name: Vigilar cada 2 minutos
         env:
           MONITOR_USERNAME: ${{ secrets.MONITOR_USERNAME }}
           MONITOR_PASSWORD: ${{ secrets.MONITOR_PASSWORD }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: python run_monitor.py --diagnose --publish
+        run: |
+          end=$((SECONDS + 20400))
+          while [ $SECONDS -lt $end ]; do
+            python run_monitor.py --diagnose --publish || true
+            sleep 120
+          done
+      - name: Relevo (se vuelve a lanzar)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/actions/workflows/monitor.yml/dispatches" -f ref=main
